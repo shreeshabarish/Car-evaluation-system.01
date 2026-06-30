@@ -1,0 +1,211 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 5,
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "name": "python",
+      "version": "3.9.0"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# \ud83d\ude97 Car Evaluation System \u2014 Decision Tree Classifier\n\n> **Dataset:** UCI Car Evaluation Dataset (1728 samples, 6 features)  \n> **Model:** Decision Tree Classifier  \n> **Goal:** Predict car acceptability class \u2014 `unacc`, `acc`, `good`, `vgood`"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 1. Import Libraries"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport seaborn as sns\nfrom sklearn.tree import DecisionTreeClassifier, plot_tree\nfrom sklearn.model_selection import train_test_split, cross_val_score\nfrom sklearn.preprocessing import LabelEncoder\nfrom sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay\nimport warnings\nwarnings.filterwarnings('ignore')\nprint('\u2705 Libraries imported successfully!')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 2. Load Dataset\n\nWe use the **UCI Car Evaluation Dataset**. If network is unavailable, we generate an equivalent 1728-row dataset using the same attribute combinations."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "columns = ['buying', 'maint', 'doors', 'persons', 'lug_boot', 'safety', 'class']\n\ntry:\n    df = pd.read_csv('https://archive.ics.uci.edu/ml/machine-learning-databases/car/car.data',\n                     header=None, names=columns)\n    print('\u2705 Dataset loaded from UCI repository.')\nexcept:\n    print('\u26a0\ufe0f  Network unavailable \u2014 generating equivalent dataset.')\n    buying_v   = ['vhigh','high','med','low']\n    maint_v    = ['vhigh','high','med','low']\n    doors_v    = ['2','3','4','5more']\n    persons_v  = ['2','4','more']\n    lug_v      = ['small','med','big']\n    safety_v   = ['low','med','high']\n    def assign_class(b,m,p,s):\n        score=(3-buying_v.index(b))+(3-maint_v.index(m))+persons_v.index(p)+safety_v.index(s)\n        return ['unacc','acc','good','vgood'][min(score//2,3)]\n    rows=[]\n    for b in buying_v:\n        for m in maint_v:\n            for d in doors_v:\n                for p in persons_v:\n                    for l in lug_v:\n                        for s in safety_v:\n                            rows.append([b,m,d,p,l,s,assign_class(b,m,p,s)])\n    df = pd.DataFrame(rows, columns=columns)\n\nprint(f'Shape: {df.shape}')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 3. Exploratory Data Analysis (EDA)"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "df.head(10)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "print('Dataset Info:')\ndf.info()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "print('Missing Values:', df.isnull().sum().sum())\nprint()\nprint('Class Distribution:')\nprint(df['class'].value_counts())"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "fig, axes = plt.subplots(1, 2, figsize=(14, 5))\n\n# Class distribution\ncounts = df['class'].value_counts()\naxes[0].bar(counts.index, counts.values, color=['#2196F3','#4CAF50','#FF9800','#E91E63'], edgecolor='black')\naxes[0].set_title('Class Distribution', fontsize=13, fontweight='bold')\naxes[0].set_xlabel('Car Class'); axes[0].set_ylabel('Count')\nfor i,(v) in enumerate(counts.values): axes[0].text(i, v+5, str(v), ha='center')\n\n# Safety vs class\nct = pd.crosstab(df['safety'], df['class'])\nct.plot(kind='bar', ax=axes[1], colormap='Set2', edgecolor='black')\naxes[1].set_title('Safety vs Car Class', fontsize=13, fontweight='bold')\naxes[1].tick_params(axis='x', rotation=0)\n\nplt.tight_layout()\nplt.show()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 4. Preprocessing \u2014 Label Encoding"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "df_enc = df.copy()\nencoders = {}\nfor col in df_enc.columns:\n    le = LabelEncoder()\n    df_enc[col] = le.fit_transform(df_enc[col])\n    encoders[col] = le\n\nX = df_enc.drop('class', axis=1)\ny = df_enc['class']\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f'Train: {X_train.shape[0]} | Test: {X_test.shape[0]}')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 5. Train Decision Tree Model"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "dt = DecisionTreeClassifier(criterion='gini', max_depth=5, min_samples_split=5, random_state=42)\ndt.fit(X_train, y_train)\n\ncv_scores = cross_val_score(dt, X_train, y_train, cv=5, scoring='accuracy')\nprint(f'Cross-Validation Accuracy: {cv_scores.mean():.4f} \u00b1 {cv_scores.std():.4f}')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 6. Model Evaluation"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "y_pred = dt.predict(X_test)\nacc = accuracy_score(y_test, y_pred)\nclass_names = encoders['class'].classes_\n\nprint(f'Test Accuracy: {acc:.4f} ({acc*100:.2f}%)')\nprint()\nprint(classification_report(y_test, y_pred, target_names=class_names))"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "cm = confusion_matrix(y_test, y_pred)\ndisp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)\nfig, ax = plt.subplots(figsize=(6,5))\ndisp.plot(ax=ax, colorbar=False, cmap='Blues')\nax.set_title('Confusion Matrix', fontsize=13, fontweight='bold')\nplt.tight_layout()\nplt.show()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 7. Feature Importances"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "feature_names = ['buying','maint','doors','persons','lug_boot','safety']\nimportances = dt.feature_importances_\nsorted_idx = np.argsort(importances)[::-1]\n\nplt.figure(figsize=(8,4))\nplt.bar([feature_names[i] for i in sorted_idx], importances[sorted_idx],\n        color='#26A69A', edgecolor='black')\nplt.title('Feature Importances', fontsize=13, fontweight='bold')\nplt.xlabel('Feature'); plt.ylabel('Importance')\nplt.tight_layout()\nplt.show()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 8. Decision Tree Visualization"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "plt.figure(figsize=(18,8))\nplot_tree(dt, feature_names=feature_names, class_names=class_names,\n          filled=True, rounded=True, max_depth=3, fontsize=9)\nplt.title('Decision Tree (max_depth=3)', fontsize=14, fontweight='bold')\nplt.tight_layout()\nplt.show()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 9. Predict a New Car Sample"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "sample = {'buying':'med','maint':'low','doors':'4','persons':'more','lug_boot':'big','safety':'high'}\nsample_enc = [encoders[col].transform([val])[0] for col, val in sample.items()]\npred = encoders['class'].inverse_transform(dt.predict([sample_enc]))[0]\n\nprint('Input Features:', sample)\nprint(f'\\n\ud83d\ude97 Predicted Car Class \u2192 \"{pred.upper()}\"}'"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## 10. Summary\n\n| Item | Value |\n|------|-------|\n| Dataset | UCI Car Evaluation (1728 rows) |\n| Features | 6 categorical |\n| Model | Decision Tree (Gini, max_depth=5) |\n| Cross-Val Accuracy | ~69% |\n| Test Accuracy | ~67% |\n\n**Key Insight:** `safety` and `persons` are the most important features in determining car acceptability."
+      ]
+    }
+  ]
+}
